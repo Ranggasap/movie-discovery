@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/domain/entities/movie.dart';
 import '../../../../core/providers/app_providers.dart';
@@ -29,11 +30,15 @@ class SearchState {
 }
 
 class SearchNotifier extends Notifier<SearchState> {
+  Timer? _debounceTimer;
+
   @override
   SearchState build() => const SearchState();
 
   Future<void> search(String query) async {
+    _debounceTimer?.cancel();
     state = state.copyWith(query: query, status: SearchStatus.loading);
+
     if (query.isEmpty) {
       state = state.copyWith(
         status: SearchStatus.initial,
@@ -41,19 +46,25 @@ class SearchNotifier extends Notifier<SearchState> {
       );
       return;
     }
-    try {
-      final searchMovies = ref.read(searchMoviesProvider);
-      final results = await searchMovies(query);
-      state = state.copyWith(
-        results: results,
-        status: results.isEmpty ? SearchStatus.empty : SearchStatus.success,
-      );
-    } catch (e) {
-      state = state.copyWith(status: SearchStatus.error);
-    }
+
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      state = state.copyWith(status: SearchStatus.loading);
+      try {
+        final searchMovies = ref.read(searchMoviesProvider);
+        final results = await searchMovies(query);
+        state = state.copyWith(
+          results: results,
+          status:
+              results.isEmpty ? SearchStatus.empty : SearchStatus.success,
+        );
+      } catch (e) {
+        state = state.copyWith(status: SearchStatus.error);
+      }
+    });
   }
 
   void clear() {
+    _debounceTimer?.cancel();
     state = const SearchState();
   }
 }
